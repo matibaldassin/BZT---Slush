@@ -1,0 +1,120 @@
+#!/bin/bash
+#SBATCH --job-name=hist-ss    # Job name
+#SBATCH --nodes=1                 # Number of nodes requested
+#SBATCH --ntasks-per-node=48      # Number of tasks (cores) per node
+#SBATCH --time=48:00:00           # Time limit hrs:min:sec
+#SBATCH --output=salida_%j.out  # Standard output file name
+#SBATCH --error=salida_%j.err   # Standard error file name
+#SBATCH --partition=ib100  # Specify the partition name
+
+# -------- SECTION print some infos to stdout ---------------------------------
+echo " "
+echo "START_TIME           = `date +'%y-%m-%d %H:%M:%S %s'`"
+START_TIME=`date +%s`
+echo "HOSTNAME             = $HOSTNAME"
+echo "JOB_NAME             = $JOB_NAME"
+echo "JOB_ID               = $SLURM_JOB_ID"
+echo "SLURM_SUBMIT_DIR     = $SLURM_SUBMIT_DIR"
+echo "SLURM_JOB_NODELIST   = $SLURM_JOB_NODELIST"
+echo "SLURM_NTASKS         = $SLURM_NTASKS"
+echo "Creating TMP_WORK_DIR directory ..."
+echo " "
+
+#-------- SECTION executing DL-POLY  ---------------------------------------------
+
+
+
+
+
+module use /opt/ohpc/pub/apps/modules/all/
+module load intel/2022a
+
+
+date
+
+
+run_simulation() {
+    local start=$1
+    local end=$2
+    local step=$3
+    local prefix=$4
+
+    # Unique checkpoint per block (prefix + range + step)
+    local checkpoint_file="checkpoint_${prefix}_${start}_${end}_${step}.txt"
+    local ii
+
+    # Safety: step cannot be zero
+    if (( step == 0 )); then
+        echo "ERROR: step cannot be zero for ${prefix} (${start} -> ${end})"
+        return 1
+    fi
+
+    # Check if a checkpoint file exists
+    if [[ -f $checkpoint_file ]]; then
+        read status < "$checkpoint_file"
+
+        if [[ "$status" == "DONE" ]]; then
+            echo "Block ${prefix} (${start} -> ${end}, step ${step}) already completed. Skipping."
+            return 0
+        else
+            ii=$status
+            echo "Resuming block ${prefix} (${start} -> ${end}, step ${step}) from ii = $ii"
+        fi
+    else
+        ii=$start
+        echo "$ii" > "$checkpoint_file"
+        echo "Starting block ${prefix} (${start} -> ${end}, step ${step}) from ii = $ii"
+    fi
+
+    # Loop over fields, ascending or descending depending on step
+    while (( (step > 0 && ii <= end) || (step < 0 && ii >= end) )); do
+        echo "El campo es $ii kV/mm"
+
+        # Calculate the value to replace in FIELD
+        i=$(echo "scale=8; ${ii}/10000" | bc -l)
+        sed "43s/0.00001/$i/g" FIELD-base > FIELD
+	
+	# Delete Old P-* files
+	rm -f P-local P-total
+
+        # Execute the simulation
+        mpirun -np $SLURM_NTASKS /home/mbaldassin.ifir/dlpoly/poly-wolf.x
+
+        # Create output directory and move files
+        mkdir "${prefix}-${ii}_kV_por_mm"
+
+        mv FIELD "${prefix}-${ii}_kV_por_mm"
+        cp CONFIG "${prefix}-${ii}_kV_por_mm"
+        cp REVCON "${prefix}-${ii}_kV_por_mm"
+        cp REVCON CONFIG
+        mv STATIS "${prefix}-${ii}_kV_por_mm"
+        mv OUTPUT "${prefix}-${ii}_kV_por_mm"
+        mv REVIVE "${prefix}-${ii}_kV_por_mm"
+        mv P-* "${prefix}-${ii}_kV_por_mm"
+        mv posiciones "${prefix}-${ii}_kV_por_mm"
+
+        # Update checkpoint with the NEXT value of ii
+        ii=$((ii + step))
+        echo "$ii" > "$checkpoint_file"
+    done
+
+    # Mark this block as finished
+    echo "DONE" > "$checkpoint_file"
+    echo "Simulation block ${prefix} (${start} -> ${end}, step ${step}) completed."
+}
+
+
+
+# Run for poling fields
+# run_simulation 25 50 25 "inicio"
+# run_simulation 100 250 50 "inicio"
+
+# Run for menos positive fields
+run_simulation 200 100 -50 "menos2"
+run_simulation 90 -100 -10 "menos2"
+run_simulation -150 -250 -50 "menos2"
+
+# Run for mas positive fields
+run_simulation -200 -100 50 "mas2"
+run_simulation -90 100 10 "mas2"
+run_simulation 150 250 50 "mas2"

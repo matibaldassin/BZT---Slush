@@ -1,0 +1,2 @@
+file,T_K,eps_xx,eps_yy,eps_zz,eps_xy,eps_xz,eps_yz,eps_iso,eps_xx_err,eps_yy_err,eps_zz_err,eps_xy_err,eps_xz_err,eps_yz_err,eps_iso_err,eps_parallel,eps_perp,eps_parallel_err,eps_perp_err
+P-total,350,718.4053,672.7974,875.53857,88.104312,-105.28219,157.2537,755.58042,83.130673,79.11475,152.65879,54.919526,75.469703,76.376369,104.96807,725.62102,770.56012,105.07197,108.98931

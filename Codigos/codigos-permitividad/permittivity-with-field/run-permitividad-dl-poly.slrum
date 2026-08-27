@@ -1,0 +1,137 @@
+#!/bin/bash
+#SBATCH --job-name=solsol111    # Job name
+#SBATCH --nodes=1                 # Number of nodes requested
+#SBATCH --ntasks-per-node=48     # Number of tasks (cores) per node
+#SBATCH --time=240:00:00           # Time limit hrs:min:sec
+#SBATCH --output=salida_%j.out  # Standard output file name
+#SBATCH --error=salida_%j.err   # Standard error file name
+#SBATCH --partition=ib100  # Specify the partition name
+
+# -------- SECTION print some infos to stdout ---------------------------------
+echo " "
+echo "START_TIME           = `date +'%y-%m-%d %H:%M:%S %s'`"
+START_TIME=`date +%s`
+echo "HOSTNAME             = $HOSTNAME"
+echo "JOB_NAME             = $JOB_NAME"
+echo "JOB_ID               = $SLURM_JOB_ID"
+echo "SLURM_SUBMIT_DIR     = $SLURM_SUBMIT_DIR"
+echo "SLURM_JOB_NODELIST   = $SLURM_JOB_NODELIST"
+echo "SLURM_NTASKS         = $SLURM_NTASKS"
+echo "Creating TMP_WORK_DIR directory ..."
+echo " "
+
+#-------- SECTION executing DL-POLY  ---------------------------------------------
+
+
+
+
+
+module use /opt/ohpc/pub/apps/modules/all/
+module load intel/2022a
+
+
+date
+
+
+run_simulation() {
+    local start=$1
+    local end=$2
+    local step=$3
+    local checkpoint_file="checkpoint.txt"
+
+    # Validate step size
+    if [[ $step -eq 0 ]]; then
+        echo "Step size cannot be zero."
+        exit 1
+    fi
+
+    # Check if a checkpoint file exists
+    if [[ -f $checkpoint_file ]]; then
+        read ii < "$checkpoint_file"
+        echo "Resuming from checkpoint file: ii = $ii"
+    else
+        ii=$start
+        echo "$ii" > "$checkpoint_file"
+        echo "Starting fresh: ii = $ii"
+    fi
+
+    # Ensure the loop condition handles both ascending and descending ranges
+    while (( (step > 0 && ii <= end) || (step < 0 && ii >= end) )); do
+        echo "La temperatura es $ii K"
+
+        # Generate CONTROL file
+        cat > CONTROL << EOF
+BNO  bulk
+temperature          $ii
+pressure               0
+steps             70000
+timestep                0.0004 ps
+print every 1000
+stats every 1000
+cutoff         12.00
+primary cutoff 10.00
+rdf         100
+print rdf
+delr       .25
+wolf sum 0.30273
+rvdw 8.0
+ensemble nst ber   0.2000  0.5000
+job time   1520000
+close time 200
+traj 10000,1000,2
+finish
+EOF
+
+
+cp ../../$ii/REVCON CONFIG
+
+sed "43s/0.00001/.00028800/g" FIELD-base > FIELD
+
+mpirun -np $SLURM_NTASKS /home/rmachado.ifir/dl-poly/execute-prueba/poly-wolf.x
+
+        mkdir -p $ii/5kV_mm
+        cp CONFIG $ii/5kV_mm/
+        cp REVCON $ii/5kV_mm/
+
+	mv REVCON CONFIG
+        mv STATIS $ii/5kV_mm/
+        mv OUTPUT $ii/5kV_mm/
+        mv REVIVE $ii/5kV_mm/
+        mv P-* $ii/5kV_mm/
+	mv FIELD $ii/5kV_mm/
+
+        
+        sed "43s/0.00001/.0057700/g" FIELD-base > FIELD
+
+        mpirun -np $SLURM_NTASKS /home/rmachado.ifir/dl-poly/execute-prueba/poly-wolf.x
+
+        mkdir $ii/10kV_mm
+        cp CONFIG $ii/10kV_mm/
+        cp REVCON $ii/10kV_mm/
+
+        mv STATIS $ii/10kV_mm/
+        mv OUTPUT $ii/10kV_mm/
+        mv REVIVE $ii/10kV_mm/
+        mv P-* $ii/10kV_mm/
+	mv FIELD $ii/10kV_mm/
+
+
+        date
+
+        # Update checkpoint file with the current value of ii
+        ii=$((ii + step))
+        if ! echo "$ii" > "$checkpoint_file"; then
+            echo "Failed to update checkpoint file. Exiting."
+            exit 1
+        fi
+    done
+
+    # Clean up the checkpoint file after completion
+    rm -f "$checkpoint_file"
+    echo "Simulation completed. Checkpoint file removed."
+}
+
+
+# Run on cooling
+run_simulation 20 400 20
+

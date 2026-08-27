@@ -1,0 +1,17 @@
+# Datos de salida de simulaciones (regenerables, no versionar)
+*.dump
+*.xyz
+*.vtk
+*.npy
+*.npz
+CONFIG
+CONFIG-salida
+**/P-local-*.txt
+
+# Frames de visualización de clusters (muchos PNG chicos por corrida)
+Cortes_fases/
+Cortes_cutoff_10/
+
+# Python
+__pycache__/
+*.pyc

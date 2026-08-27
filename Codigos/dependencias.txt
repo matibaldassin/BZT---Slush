@@ -1,0 +1,3 @@
+Para correr jobs con dependencias en cluster
+
+sbatch --dependency=afterany:123456 job2.slurm
