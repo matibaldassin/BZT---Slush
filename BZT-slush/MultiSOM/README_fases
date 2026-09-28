@@ -1,0 +1,34 @@
+********************************************************
+Procedimiento para clasificar las celdas por fases
+MUltisom
+***************************************************
+1 - generar el file para ovito: (ovito.xyz)
+    ov3.x (ovito3.f90): usa CONFIG y P-local para generar ovito.xyz
+2 - Abrir ovito 
+    Cargar load sesion state: feat_pipeline.ovito
+    Cargar el achivo (ovito.xyz) desde el panel a la derecha 
+    Exportar archivo con propiedades:
+	ATOMS type x y z DipoleOrientationX DipoleOrientationY DipoleOrientationZ DipoleMagnitude 
+        CompMax CompMin CompMid CompMaxNorm CompMinNorm CompMidNorm
+    como ss_xx.dump  (Lammps)
+3 - Ejecutar MultiSOM: python3 main.py	
+    Se genera SOM_ss_xx.dump
+
+4 - Cargar en ovito el estado: analisis.ovito
+    cargar el file anterior y Voila!
+5 - para hacer la tabla fases vs temp. correr group_hist_analysis.py
+
+Para ver celdas en cada fase:
+Elemento: particula
+Histogram: Group
+
+Clustering:
+Posicionarse en clear Seplection
+Add Modifier: Expresion selection
+Group != 0
+A.M: Delete Selected
+A.M: Cluster
+
+
+
+ 

@@ -1,0 +1,154 @@
+#!/bin/bash
+#SBATCH --job-name=permit-BZT     # Job name
+#SBATCH --nodes=1                 # Number of nodes requested
+#SBATCH --ntasks-per-node=48      # Number of tasks (cores) per node
+#SBATCH --time=240:00:00          # Time limit hrs:min:sec
+#SBATCH --output=salida_%j.out    # Standard output file name
+#SBATCH --error=salida_%j.err     # Standard error file name
+#SBATCH --partition=ib100         # Specify the partition name
+
+# =============================================================================
+# ===================== PARAMETROS A MODIFICAR ===============================
+# =============================================================================
+
+# ---- Temperaturas a recorrer (deben coincidir con las corridas ya hechas) ----
+TEMP_START=20
+TEMP_END=400
+TEMP_STEP=20
+
+# Carpeta donde estan los REVCON de la corrida de temperatura para cada T.
+TEMP_SOURCE_PREFIX="../Cooling-"
+
+# ---- Campos electricos a aplicar, en kV/mm, en el orden en que se aplican ----
+FIELD_KV_LIST=(5 10)
+
+# Archivo FIELD base y linea donde esta el placeholder del campo (Ez = 0.00001)
+FIELD_BASE_FILE="FIELD-base"
+FIELD_LINE_NUM=43
+
+# ---- Cantidad de pasos de simulacion por campo aplicado ----
+STEPS_PER_FIELD=80000
+
+# =============================================================================
+# =============================================================================
+
+# -------- SECTION print some infos to stdout ---------------------------------
+echo " "
+echo "START_TIME           = $(date +'%y-%m-%d %H:%M:%S %s')"
+START_TIME=$(date +%s)
+echo "HOSTNAME             = $HOSTNAME"
+echo "JOB_NAME             = $SLURM_JOB_NAME"
+echo "JOB_ID               = $SLURM_JOB_ID"
+echo "SLURM_SUBMIT_DIR     = $SLURM_SUBMIT_DIR"
+echo "SLURM_JOB_NODELIST   = $SLURM_JOB_NODELIST"
+echo "SLURM_NTASKS         = $SLURM_NTASKS"
+echo " "
+
+#-------- SECTION environment --------------------------------------------------
+module use /opt/ohpc/pub/apps/modules/all/
+module load intel/2022a
+
+date
+
+# Safer globs: if no files match, the pattern expands to nothing (not itself)
+shopt -s nullglob
+
+run_field_for_temperature() {
+    local ii=$1
+    local temp_revcon="${TEMP_SOURCE_PREFIX}${ii}/REVCON"
+
+    if [[ ! -f $temp_revcon ]]; then
+        echo "[T=${ii}K] ERROR: no se encontro $temp_revcon. Se salta esta temperatura."
+        return 1
+    fi
+
+    local config_source="$temp_revcon"
+
+    for kv in "${FIELD_KV_LIST[@]}"; do
+        local outdir="${ii}/${kv}kV_mm"
+        local done_marker="${outdir}/.done"
+
+        if [[ -f $done_marker ]]; then
+            echo "[T=${ii}K, ${kv}kV/mm] Ya completado. Se salta."
+            config_source="${outdir}/REVCON"
+            continue
+        fi
+
+        echo "[T=${ii}K] Aplicando campo de ${kv} kV/mm"
+
+        cp "$config_source" CONFIG
+
+        # Generar CONTROL file para esta temperatura
+        cat > CONTROL << EOF
+BNO  bulk
+temperature          $ii
+pressure               0
+steps             $STEPS_PER_FIELD
+timestep                0.0004 ps
+print every 1000
+stats every 1000
+cutoff         12.00
+primary cutoff 10.00
+rdf         100
+print rdf
+delr       .25
+wolf sum 0.30273
+rvdw 8.0
+ensemble nst ber   0.2000  0.5000
+job time   1520000
+close time 200
+traj 10000,1000,2
+finish
+EOF
+
+        # Calcular el valor del campo (kV/mm -> unidades de FIELD) y generar FIELD
+        field_value=$(echo "scale=8; ${kv}/10000" | bc -l)
+        sed "${FIELD_LINE_NUM}s/0.00001/${field_value}/" "$FIELD_BASE_FILE" > FIELD
+
+        # Limpiar archivos viejos de corridas anteriores
+        rm -f P-local P-total
+
+        # Ejecutar DL_POLY
+        mpirun -np "$SLURM_NTASKS" "/home/mbaldassin.ifir/dlpoly/poly-wolf.x"
+        if [[ $? -ne 0 ]]; then
+            echo "[T=${ii}K, ${kv}kV/mm] ERROR: DL_POLY fallo."
+            return 1
+        fi
+
+        if [[ ! -f REVCON ]]; then
+            echo "[T=${ii}K, ${kv}kV/mm] ERROR: REVCON no generado."
+            return 1
+        fi
+
+        # Guardar resultados
+        mkdir -p "$outdir"
+        cp CONFIG "$outdir"/
+        cp REVCON "$outdir"/
+        cp FIELD "$outdir"/
+        mv -f STATIS "$outdir"/ 2>/dev/null || true
+        mv -f OUTPUT "$outdir"/ 2>/dev/null || true
+        mv -f REVIVE "$outdir"/ 2>/dev/null || true
+        mv -f P-* "$outdir"/ 2>/dev/null || true
+        mv -f posiciones "$outdir"/ 2>/dev/null || true
+        mv -f RDFDAT "$outdir"/ 2>/dev/null || true
+        mv -f REVCON CONFIG
+
+        touch "$done_marker"
+        echo "[T=${ii}K, ${kv}kV/mm] Completado."
+
+        # El siguiente campo continua desde el REVCON de este
+        config_source="${outdir}/REVCON"
+    done
+
+    return 0
+}
+
+# ---------- LOOP sobre temperaturas ----------
+ii=$TEMP_START
+while (( (TEMP_STEP > 0 && ii <= TEMP_END) || (TEMP_STEP < 0 && ii >= TEMP_END) )); do
+    run_field_for_temperature "$ii"
+    ii=$((ii + TEMP_STEP))
+done
+
+date
+echo "SIMULACION COMPLETADA"
