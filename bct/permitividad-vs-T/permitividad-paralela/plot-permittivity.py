@@ -1,18 +1,42 @@
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import numpy as np
 import glob
 import os
 
 # Busca automáticamente todas las tablas generadas: permittivity-Ca*-table.dat
-TABLE_GLOB = "permittivity-Ca*-table.dat"
-PLOT_DIA = "permittivity-BCT-all.png"
+TABLE_GLOB = "permittivity-*-table.dat"
+PLOT_DIA = "e33.png"
 
-# Parámetros del inset (puedes modificarlos aquí)
-INSET_POSITION = [-0.12, 0.45, 0.5, 0.4]  # [x0, y0, ancho, alto] en fracción del eje principal
-INSET_XLIM = (270, 321)
-INSET_YLIM = (30,200)  # None usa el ajuste automático en el inset
+# Inset: (x0, y0, ancho, alto) en coordenadas relativas del eje principal
+INSET_POSITION = (-0.12, 0.35, 0.6, 0.6)
+INSET_XLIM = (260, 320)
+INSET_YLIM = (40,200)
 INSET_SHOW_GRID = True
+
+mpl.rcParams.update(
+    {
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "Nimbus Roman", "DejaVu Serif"],
+        "mathtext.fontset": "stix",
+        "axes.labelsize": 26,
+        "xtick.labelsize": 22,
+        "ytick.labelsize": 22,
+        "axes.linewidth": 2.5,
+        "lines.linewidth": 3.0,
+        "lines.markersize": 8.0,
+        "xtick.major.size": 7.0,
+        "ytick.major.size": 7.0,
+        "xtick.major.width": 3.5,
+        "ytick.major.width": 3.5,
+        "xtick.minor.size": 3.5,
+        "ytick.minor.size": 3.5,
+        "xtick.minor.width": 1.2,
+        "ytick.minor.width": 1.2,
+        "legend.fontsize": 18,
+    }
+)
 
 def read_table(path):
     """Lee una tabla de permitividad generada por `permittivity.py`.
@@ -64,9 +88,8 @@ def main():
         return
 
     fig, ax = plt.subplots(figsize=(9,6))
-    ax.set_title("Permittivity vs Temperature", fontsize=16, fontweight='bold')
-    ax.set_ylabel(r"$\varepsilon_{r,\parallel}$", fontsize=14, fontweight='bold')
-    ax.set_xlabel("Temperature (K)", fontsize=14, fontweight='bold')
+    ax.set_ylabel(r"$\varepsilon_{33}$")
+    ax.set_xlabel("Temperature (K)")
     ax.set_xlim(250, 510)
     ax.minorticks_on()
 
@@ -91,8 +114,8 @@ def main():
         marker = markers[i % len(markers)]
         ax.plot(temps_s, vals_s, marker=marker, label=f"{label}")
 
-    ax.grid(True, linestyle='--', alpha=0.5)
-    ax.legend(fontsize=12)
+    ax.grid(True, linestyle='--', alpha=0.6, linewidth=1.2)
+    ax.legend(loc='upper right', frameon=False)
 
     # Inset con el intervalo solicitado
     inset_width = f"{INSET_POSITION[2] * 100}%"
@@ -123,8 +146,7 @@ def main():
     # Establecer ticks en el eje Y cada 50 unidades
     ymin, ymax = axins.get_ylim()
     axins.set_yticks(np.arange(np.ceil(ymin / 50) * 50, np.floor(ymax / 50) * 50 + 50, 50))
-    axins.tick_params(axis='both', which='both', labelsize=10)
-    axins.set_title("Detalle 260-320 K", fontsize=11)
+    axins.tick_params(axis='both', which='both', labelsize=18)
 
     plt.tight_layout()
     fig.savefig(PLOT_DIA, dpi=300, bbox_inches='tight')
